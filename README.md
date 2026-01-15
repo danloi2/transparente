@@ -1,13 +1,10 @@
-# FondoTransparente 🖼️
+# FondoTransparente
 
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/danloi2/transparente?style=flat-square&color=blue)
 ![Python Version](https://img.shields.io/badge/python-3.11-blue?style=flat-square&logo=python)
 ![OpenCV](https://img.shields.io/badge/OpenCV-5.x-white?style=flat-square&logo=opencv&logoColor=white&color=5C3EE8)
 ![ONNX Runtime](https://img.shields.io/badge/ONNX-Runtime-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-
-> **Desarrollado por:** Daniel Losada Iglesias  
-
 
 ## 🚀 Instalación y Configuración
 
