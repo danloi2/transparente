@@ -99,5 +99,3 @@ Estructura: No elimines la carpeta _internal del interior del DMG, ya que contie
 ## 📄 Licencia
 
 Este proyecto está bajo la Licencia MIT - mira el archivo [LICENSE](LICENSE) para más detalles.
-
-Copyright (c) 2026 **Daniel Losada Iglesias** - Universidad del País Vasco / Euskal Herriko Unibertsitatea
