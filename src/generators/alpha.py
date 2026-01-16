@@ -1,4 +1,11 @@
+"""
+Xxxx
+xxxx
+"""
+
 import os
+import traceback
+
 try:
     import numpy as np
     import cv2
@@ -8,12 +15,13 @@ except ImportError:
     print("Por favor, ejecuta: pip install rembg opencv-python numpy\n")
     raise
 
-from PIL import Image
 from io import BytesIO
-from .. import config
+from PIL import Image
+from src import config
 
 # Inicializar sesión global de IA
 SESSION = None
+
 
 def get_ai_session():
     """Lazily initializes or returns the AI session with feedback."""
@@ -21,24 +29,30 @@ def get_ai_session():
     if SESSION is None:
         print("\nDEBUG: [AI_INIT] Iniciando get_ai_session...")
         print("[AI] Cargando modelo de Inteligencia Artificial (rembg)...")
-        print("[INFO] Si es la primera vez, esto puede tardar unos minutos (descargando ~150MB).")
+        print(
+            "[INFO] Si es la primera vez, esto puede tardar unos minutos (descargando ~150MB)."
+        )
         try:
             print("DEBUG: [AI_INIT] Llamando a new_session('isnet-general-use')...")
             SESSION = new_session("isnet-general-use")
             print("DEBUG: [AI_INIT] new_session completado con éxito.")
             print("[AI] Modelo cargado correctamente.\n")
         except Exception as e:
-            import traceback
             print(f"[ERROR] No se pudo cargar el modelo de IA: {e}")
             print(f"DEBUG: [AI_INIT] Traceback: {traceback.format_exc()}")
             SESSION = None
     return SESSION
 
+
 # ----------------------------
 # Postprocesado avanzado
 # ----------------------------
 
+
 def refine_alpha(img, feather=2, blur=1):
+    """
+    Refina el alpha de una imagen.
+    """
     data = np.array(img)
     alpha = data[..., 3].astype(np.float32)
 
@@ -57,7 +71,11 @@ def refine_alpha(img, feather=2, blur=1):
     data[..., 3] = alpha
     return Image.fromarray(data)
 
+
 def clean_white_halo(img):
+    """
+    Elimina el halo blanco de una imagen.
+    """
     data = np.array(img).astype(np.float32)
 
     r = data[:, :, 0]
@@ -66,10 +84,10 @@ def clean_white_halo(img):
     a = data[:, :, 3]
 
     mask = (
-        (np.abs(r - config.TRANSPARENT_COLOR[0]) <= config.TOLERANCE) &
-        (np.abs(g - config.TRANSPARENT_COLOR[1]) <= config.TOLERANCE) &
-        (np.abs(b - config.TRANSPARENT_COLOR[2]) <= config.TOLERANCE) &
-        (a > 0)
+        (np.abs(r - config.TRANSPARENT_COLOR[0]) <= config.TOLERANCE)
+        & (np.abs(g - config.TRANSPARENT_COLOR[1]) <= config.TOLERANCE)
+        & (np.abs(b - config.TRANSPARENT_COLOR[2]) <= config.TOLERANCE)
+        & (a > 0)
     )
 
     # Eliminación directa
@@ -88,7 +106,11 @@ def clean_white_halo(img):
 
     return Image.fromarray(data.astype(np.uint8))
 
+
 def remove_tiny_alpha(img, min_alpha=8):
+    """
+    Elimina el alpha pequeño de una imagen.
+    """
     data = np.array(img).astype(np.uint8)
     alpha = data[:, :, 3]
 
@@ -97,11 +119,16 @@ def remove_tiny_alpha(img, min_alpha=8):
 
     return Image.fromarray(data)
 
+
 # ----------------------------
 # Pipeline principal
 # ----------------------------
 
+
 def generate_alpha_png(input_path, output_path):
+    """
+    Genera un archivo PNG con el alpha de una imagen.
+    """
     if os.path.exists(output_path):
         return
 
@@ -109,7 +136,9 @@ def generate_alpha_png(input_path, output_path):
         # --- IA ---
         session = get_ai_session()
         if session is None:
-            raise RuntimeError("La sesión de IA no está disponible (error al cargar el modelo).")
+            raise RuntimeError(
+                "La sesión de IA no está disponible (error al cargar el modelo)."
+            )
 
         with open(input_path, "rb") as i:
             result = remove(i.read(), session=session)

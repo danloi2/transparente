@@ -1,3 +1,7 @@
+"""
+Configuración para la creación del DMG de macOS.
+"""
+
 import os.path
 
 base_dir = os.path.abspath('.')
@@ -21,4 +25,4 @@ icon_locations = {
 }
 
 window_rect = ((200, 200), (600, 350))
-icon_size = 100
+ICON_SIZE = 100

@@ -9,17 +9,18 @@
 ## 🚀 Instalación y Configuración
 
 ### Requisitos previos
+
 Este proyecto utiliza **Conda** para la gestión de dependencias y entornos. Se recomienda el uso de [Miniforge](https://github.com/conda-forge/miniforge).
 
 ### Configuración del entorno
 
-# Crear el entorno desde el archivo yml
+#### Crear el entorno desde el archivo yml
 
 ```bash
 conda env create -f environment.yml
 ```
 
-# Activar el entorno
+#### Activar el entorno
 
 ```bash
 conda activate transparente
@@ -31,22 +32,24 @@ conda activate transparente
 python gui_main.py
 ```
 
-🛠️ Compilación para macOS
+## 🛠️ Compilación para macOS
+
 Sigue estos pasos para generar un instalador nativo (.dmg) distribuible.
 
-```bash
-1. Generar el paquete con PyInstaller
-Este comando crea la estructura de la aplicación y empaqueta las librerías pesadas (OpenCV, ONNX, SciPy).
+1. **Generar el paquete con PyInstaller**
+   Este comando crea la estructura de la aplicación y empaqueta las librerías pesadas (OpenCV, ONNX, SciPy).
 
-pyinstaller --onedir --windowed --noconfirm \
-  --name "FondoTransparente" \
-  --collect-all cv2 \
-  --collect-all onnxruntime \
-  --collect-all scipy \
-  gui_main.py
-```
+   ```bash
+   pyinstaller --onedir --windowed --noconfirm \
+     --name "FondoTransparente" \
+     --collect-all cv2 \
+     --collect-all onnxruntime \
+     --collect-all scipy \
+     gui_main.py
+   ```
 
-2. Crear el Instalador (.dmg) con dmgbuild
+2. **Crear el Instalador (.dmg) con dmgbuild**
+
 Para que el instalador sea visual y fácil de usar, ejecutamos dmgbuild.
 
 Asegúrate de tener un archivo dmg_settings.py con este contenido:
@@ -77,7 +80,9 @@ icon_locations = {
 window_rect = ((200, 200), (600, 350))
 icon_size = 100
 ```
+
 **Comando final de construcción:**
+
 ```bash
 # Limpiar instalaciones previas
 rm -f dist/Fondo-Transparente-Installer.dmg
@@ -86,10 +91,11 @@ rm -f dist/Fondo-Transparente-Installer.dmg
 dmgbuild -s dmg_settings.py "Fondo Transparente" dist/Fondo-Transparente-Installer.dmg
 ```
 
-Notas de Distribución
+### Notas de Distribución
+
 Seguridad: Al ser una app no firmada por un desarrollador identificado de Apple, el usuario final deberá permitir su ejecución en Ajustes del Sistema > Privacidad y Seguridad.
 
-Estructura: No elimines la carpeta _internal del interior del DMG, ya que contiene las dependencias críticas de Python.
+Estructura: No elimines la carpeta \_internal del interior del DMG, ya que contiene las dependencias críticas de Python.
 
 ---
 

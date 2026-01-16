@@ -26,8 +26,9 @@ dependencies:
   - cmake
   - scikit-image
   - onnxruntime
+  - pylint
   - python.app
-  - pyinst
+  - pyinstaller
   - dmgbuild
 
 # macOS: brew install potrace
