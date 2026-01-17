@@ -1,70 +1,140 @@
-name: Build Transparente Rust
+name: Build Multiplatform
 
 on:
   push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-
-  build-fedora:
-    name: Build RPM Fedora
-    runs-on: ubuntu-latest
-    container:
-      image: fedora:39
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: transparente_rust-linux
+          - os: windows-latest
+            artifact_name: transparente_rust-windows
+          - os: macos-latest
+            artifact_name: transparente_rust-macos
+          - os: fedora-latest
+            artifact_name: transparente_rust-fedora
 
     steps:
-      - name: Install deps
-        run: |
-          dnf update -y
-          dnf install -y \
-            gcc gcc-c++ make \
-            openssl-devel \
-            libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel \
-            dbus-devel \
-            rpm-build rpmdevtools \
-            curl git
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/checkout@v4
+      # --- Linux Ubuntu: dependencias y compilación ---
+      - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm
 
       - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Release
+        working-directory: ./rust
+        env:
+          ORT_STRATEGY: download
+        run: cargo build --release
+
+      # --- WINDOWS: empaquetar exe + dlls ---
+      - name: Prepare Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
+          mkdir dist_win
+          copy-item rust/target/release/transparente_rust.exe dist_win/
+          get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
+
+      # --- LINUX Ubuntu: generar RPM ---
+      - name: Prepare Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          mkdir dist_linux
+
+          SO_PATH=$(find rust/target -name "libonnxruntime.so*" -type f -print -quit)
+          if [ -z "$SO_PATH" ]; then
+            echo "ERROR: No se encontró libonnxruntime.so"
+            exit 1
+          fi
+          SO_NAME=$(basename "$SO_PATH")
+          cp "$SO_PATH" rust/target/release/
+          echo "Librería motor de IA detectada: $SO_NAME"
+
+          cargo install cargo-generate-rpm
+
+          cd rust
+          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
+
+          echo "Contenido del paquete RPM:"
+          rpm -qpl target/generate-rpm/*.rpm
+
+          cp target/generate-rpm/*.rpm ../dist_linux/
+          cp target/release/transparente_rust ../dist_linux/
+          cp target/release/$SO_NAME ../dist_linux/
+
+      # --- Fedora: compilación + RPM nativo ---
+      - name: Prepare Fedora
+        if: matrix.os == 'fedora-latest'
+        runs-on: ubuntu-latest
+        container:
+          image: fedora:39
+        run: |
+          dnf update -y
+          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git
+
           curl https://sh.rustup.rs -sSf | sh -s -- -y
           source $HOME/.cargo/env
 
-      - name: Build
-        working-directory: rust
-        env:
-          ORT_STRATEGY: download
-        run: |
-          source $HOME/.cargo/env
-          cargo build --release
-
-      - name: Inject ONNX Runtime and build RPM
-        working-directory: rust
-        run: |
-          source $HOME/.cargo/env
+          cd rust
+          ORT_STRATEGY=download cargo build --release
 
           SO_PATH=$(find target -name "libonnxruntime.so*" -type f | head -n1)
           if [ -z "$SO_PATH" ]; then
             echo "libonnxruntime no encontrada"
             exit 1
           fi
-
           SO_NAME=$(basename "$SO_PATH")
           cp "$SO_PATH" target/release/
 
           cargo install cargo-generate-rpm
+          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
 
-          cargo generate-rpm \
-            --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
+          mkdir -p ../dist_fedora
+          cp target/generate-rpm/*.rpm ../dist_fedora/
+          cp target/release/transparente_rust ../dist_fedora/
+          cp target/release/$SO_NAME ../dist_fedora/
 
-      - name: Collect RPM
+      # --- MACOS: DMG ---
+      - name: Prepare Mac
+        if: matrix.os == 'macos-latest'
         run: |
-          mkdir -p dist_fedora
-          cp rust/target/generate-rpm/*.rpm dist_fedora/
+          mkdir -p dist_mac/AppContent
+          cp rust/target/release/transparente_rust dist_mac/AppContent/
+          find rust/target -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \; 2>/dev/null || true
+          chmod +x dist_mac/AppContent/transparente_rust
 
-      - uses: actions/upload-artifact@v4
+          brew install create-dmg
+          create-dmg \
+            --volname "Instalador Transparente" \
+            --window-pos 200 120 \
+            --window-size 500 300 \
+            --icon-size 100 \
+            --app-drop-link 380 120 \
+            "dist_mac/transparente_rust.dmg" \
+            "dist_mac/AppContent/"
+
+      # --- SUBIDA DE ARTEFACTOS ---
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-fedora
-          path: dist_fedora/
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist_win/
+            dist_linux/
+            dist_mac/*.dmg
+            dist_fedora/
