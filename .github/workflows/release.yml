@@ -33,59 +33,60 @@ jobs:
         working-directory: ./rust
         run: cargo build --release
 
-      # --- WINDOWS: Búsqueda profunda de DLLs ---
+      # --- WINDOWS: Búsqueda recursiva infalible de DLLs ---
       - name: Prepare Windows
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           mkdir dist_win
           copy-item rust/target/release/transparente_rust.exe dist_win/
+          # El flag -recurse encuentra onnxruntime.dll aunque esté en subcarpetas de build
           get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
 
-      # --- LINUX: Búsqueda profunda de .so + RPM ---
+      # --- LINUX: Generación de RPM corregida ---
       - name: Prepare Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir dist_linux
-          # 1. Buscar recursivamente todos los .so en target y moverlos a release para el RPM
+          # 1. Recolectar .so en target/release para que el metadata del Cargo.toml los vea
           find rust/target -name "*.so*" -exec cp {} rust/target/release/ \; 2>/dev/null || true
           
-          # 2. Generar el RPM
+          # 2. Instalar herramienta y generar RPM
           cargo install cargo-generate-rpm
           cd rust
           cargo generate-rpm
           
-          # 3. Copiar resultados a la carpeta de artefactos
+          # 3. Mover archivos finales al artefacto
           cp target/generate-rpm/*.rpm ../dist_linux/
           cp target/release/transparente_rust ../dist_linux/
           cp target/release/*.so* ../dist_linux/ 2>/dev/null || true
 
-      # --- MAC: Búsqueda profunda de .dylib ---
+      # --- MACOS: Generación de DMG con create-dmg ---
       - name: Prepare Mac
         if: matrix.os == 'macos-latest'
         run: |
-          mkdir dist_mac
-          cp rust/target/release/transparente_rust dist_mac/
-          find rust/target -name "*.dylib*" -exec cp {} dist_mac/ \; 2>/dev/null || true
+          mkdir -p dist_mac/AppContent
+          cp rust/target/release/transparente_rust dist_mac/AppContent/
+          find rust/target -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \; 2>/dev/null || true
+          chmod +x dist_mac/AppContent/transparente_rust
+          
+          brew install create-dmg
+          
+          create-dmg \
+            --volname "Instalador Transparente" \
+            --window-pos 200 120 \
+            --window-size 500 300 \
+            --icon-size 100 \
+            --app-drop-link 380 120 \
+            "dist_mac/transparente_rust.dmg" \
+            "dist_mac/AppContent/"
 
       # --- SUBIDA ---
-      - name: Upload Windows
-        if: matrix.os == 'windows-latest'
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist_win/
-
-      - name: Upload Linux
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: dist_linux/
-
-      - name: Upload Mac
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: dist_mac/
+          path: |
+            dist_win/
+            dist_linux/
+            dist_mac/*.dmg

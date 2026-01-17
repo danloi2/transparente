@@ -29,12 +29,14 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { version = "0.33", features = ["wayland", "x11"] }
 
-[package.metadata.rpm.files]
-# Rutas correctas para el CI (relativas a la ubicacion del Cargo.toml)
-"target/release/transparente_rust" = { path = "/usr/bin/transparente_rust" }
-"target/release/*.so*" = { path = "/usr/lib64/" }
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/transparente_rust", dest = "/usr/bin/transparente_rust", mode = "755" },
+    { source = "target/release/*.so*", dest = "/usr/lib64/", mode = "644" }
+]
 
-[package.metadata.rpm.deps]
-"wayland" = ">= 1.20"
-"libxkbcommon" = ">= 1.0"
+# Las dependencias de Fedora se mantienen igual
+[package.metadata.generate-rpm.requires]
+wayland = ">= 1.20"
+libxkbcommon = ">= 1.0"
 "openssl-libs" = "*"
