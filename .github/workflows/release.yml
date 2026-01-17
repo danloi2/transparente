@@ -26,11 +26,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --- LINUX UBUNTU ---
       - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm pkg-config zlib1g-dev curl
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -46,20 +47,31 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
+          if (Test-Path dist_win) { Remove-Item -Recurse -Force dist_win }
           mkdir dist_win
+
           copy-item rust/target/release/transparente_rust.exe dist_win/
-          get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
+          Get-ChildItem -Path rust/target/release -Filter *.dll | Copy-Item -Destination dist_win/ -Force
+
+          Write-Host "Archivos copiados en dist_win:"
+          Get-ChildItem dist_win | ForEach-Object { Write-Host $_.FullName }
 
       # --- MACOS ---
       - name: Prepare Mac
         if: matrix.os == 'macos-latest'
         run: |
+          rm -rf dist_mac
           mkdir -p dist_mac/AppContent
+
           cp rust/target/release/transparente_rust dist_mac/AppContent/
-          find rust/target -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \; 2>/dev/null || true
+          find rust/target/release -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \;
+
           chmod +x dist_mac/AppContent/transparente_rust
 
-          brew install create-dmg
+          echo "Archivos copiados a AppContent:"
+          ls -l dist_mac/AppContent/
+
+          brew install --quiet create-dmg
           create-dmg \
             --volname "Instalador Transparente" \
             --window-pos 200 120 \
@@ -95,7 +107,7 @@ jobs:
       - name: Install dependencies
         run: |
           dnf update -y
-          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git
+          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git pkgconfig zlib-devel
 
       - name: Install Rust
         run: |
@@ -108,9 +120,11 @@ jobs:
           cd rust
           ORT_STRATEGY=download cargo build --release
 
-          SO_PATH=$(find target -name "libonnxruntime.so*" -type f | head -n1)
+          echo "Buscando libonnxruntime..."
+          SO_PATH=$(find target -type f -name "libonnxruntime.so*" | head -n1)
           if [ -z "$SO_PATH" ]; then
             echo "ERROR: libonnxruntime no encontrada"
+            find target -type f
             exit 1
           fi
           SO_NAME=$(basename "$SO_PATH")
@@ -118,8 +132,7 @@ jobs:
 
           cargo install cargo-generate-rpm
 
-          cargo generate-rpm \
-            --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
+          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
 
           mkdir -p ../dist_fedora
           cp target/generate-rpm/*.rpm ../dist_fedora/
