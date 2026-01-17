@@ -33,33 +33,32 @@ jobs:
         working-directory: ./rust
         run: cargo build --release
 
-      # --- WINDOWS: Búsqueda recursiva infalible de DLLs ---
+      # --- WINDOWS: Búsqueda recursiva para onnxruntime.dll ---
       - name: Prepare Windows
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           mkdir dist_win
           copy-item rust/target/release/transparente_rust.exe dist_win/
-          # El flag -recurse encuentra onnxruntime.dll aunque esté en subcarpetas de build
           get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
 
-      # --- LINUX: Generación de RPM corregida ---
+      # --- LINUX: Generación de RPM filtrando solo libonnx ---
       - name: Prepare Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir dist_linux
-          # 1. Recolectar .so en target/release para que el metadata del Cargo.toml los vea
-          find rust/target -name "*.so*" -exec cp {} rust/target/release/ \; 2>/dev/null || true
+          # 1. Copiar SOLO las librerías necesarias de IA a la carpeta de release
+          find rust/target -name "libonnx*.so*" -exec cp {} rust/target/release/ \; 2>/dev/null || true
           
-          # 2. Instalar herramienta y generar RPM
+          # 2. Generar el RPM (usará la config de tu Cargo.toml)
           cargo install cargo-generate-rpm
           cd rust
           cargo generate-rpm
           
-          # 3. Mover archivos finales al artefacto
+          # 3. Mover al artefacto el RPM, el binario y la librería de IA suelta
           cp target/generate-rpm/*.rpm ../dist_linux/
           cp target/release/transparente_rust ../dist_linux/
-          cp target/release/*.so* ../dist_linux/ 2>/dev/null || true
+          cp target/release/libonnx*.so* ../dist_linux/ 2>/dev/null || true
 
       # --- MACOS: Generación de DMG con create-dmg ---
       - name: Prepare Mac
@@ -81,7 +80,7 @@ jobs:
             "dist_mac/transparente_rust.dmg" \
             "dist_mac/AppContent/"
 
-      # --- SUBIDA ---
+      # --- SUBIDA: Sin ZIP dentro de ZIP ---
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
