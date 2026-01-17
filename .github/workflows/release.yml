@@ -6,31 +6,33 @@ jobs:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false # Permite que si uno falla, los otros sigan compilando
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: programa-linux
-            # Ruta ajustada: incluye la carpeta 'rust'
-            path: rust/target/release/transparente_rust
+            artifact_name: transparente_rust-linux
+            binary_path: rust/target/release/transparente_rust
           - os: windows-latest
-            artifact_name: programa-windows
-            # Ruta ajustada: incluye la carpeta 'rust'
-            path: rust/target/release/*.exe
+            artifact_name: transparente_rust-windows
+            binary_path: rust/target/release/*.exe
+          - os: macos-latest
+            artifact_name: transparente_rust-macos
+            binary_path: rust/target/release/transparente_rust
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install dependencies (Linux only)
+      - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Release
-        # IMPORTANTE: Le decimos a GitHub que entre a la carpeta 'rust'
         working-directory: ./rust
         run: cargo build --release
 
@@ -38,4 +40,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.path }}
+          path: ${{ matrix.binary_path }}
