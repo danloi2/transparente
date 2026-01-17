@@ -111,12 +111,12 @@ jobs:
 
       - name: Install Rust
         run: |
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          source $HOME/.cargo/env
+          dnf install -y rust cargo
+          rustc --version
+          cargo --version
 
       - name: Build Release and inject ONNX Runtime
         run: |
-          source $HOME/.cargo/env
           cd rust
           ORT_STRATEGY=download cargo build --release
 
