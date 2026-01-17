@@ -1,61 +1,70 @@
-name: Build Multiplatform 
+name: Build Multiplatform
 
 on:
   push:
   workflow_dispatch:
 
+# ------------------------------
+# Job Ubuntu
+# ------------------------------
 jobs:
-  # ------------------------------
-  # Job Linux multiplataforma (Ubuntu + Fedora)
-  # ------------------------------
-  build-linux:
-    name: Build Linux
+  build-ubuntu:
+    name: Build Ubuntu
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact_name: transparente_rust-linux
-            container_image: ""          # No container para Ubuntu
-          - os: fedora-latest
-            artifact_name: transparente_rust-fedora
-            container_image: fedora:latest
-
-    container: ${{ matrix.container_image != "" && matrix.container_image || '' }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
+      - name: Install Ubuntu Dependencies
         run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            sudo apt-get update
-            sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm pkg-config zlib1g-dev curl
-          else
-            dnf update -y
-            dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git pkgconfig zlib-devel rust cargo
-          fi
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm pkg-config zlib1g-dev curl
 
-      - name: Install Rust (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Release
-        run: |
-          cd rust
-          ORT_STRATEGY=download cargo build --release
+        working-directory: ./rust
+        env:
+          ORT_STRATEGY: download
+        run: cargo build --release
 
       - name: Prepare Linux artifact
         run: |
           mkdir -p dist_linux
           cp rust/target/release/transparente_rust dist_linux/
 
-      - name: Generate Fedora RPM
-        if: matrix.os == 'fedora-latest'
+      - name: Upload Ubuntu Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: transparente_rust-linux
+          path: dist_linux/
+
+# ------------------------------
+# Job Fedora
+# ------------------------------
+  build-fedora:
+    name: Build Fedora RPM
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Fedora dependencies
+        run: |
+          dnf update -y
+          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git pkgconfig zlib-devel rust cargo
+
+      - name: Build Release and inject ONNX Runtime
         run: |
           cd rust
+          ORT_STRATEGY=download cargo build --release
+
+          echo "Archivos en target/release:"
+          ls -l target/release
+
           echo "Buscando libonnxruntime..."
           SO_PATH=$(find target -type f -name "libonnxruntime.so*" | head -n1)
           if [ -z "$SO_PATH" ]; then
@@ -74,16 +83,15 @@ jobs:
           cp target/release/$SO_NAME ../dist_fedora/
           cp target/generate-rpm/*.rpm ../dist_fedora/
 
-      - name: Upload Linux Artifact
+      - name: Upload Fedora Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: |
-            ${{ matrix.os == 'ubuntu-latest' && 'dist_linux/' || 'dist_fedora/' }}
+          name: transparente_rust-fedora
+          path: dist_fedora/
 
-  # ------------------------------
-  # Job Windows
-  # ------------------------------
+# ------------------------------
+# Job Windows
+# ------------------------------
   build-windows:
     name: Build Windows
     runs-on: windows-latest
@@ -113,9 +121,9 @@ jobs:
           name: transparente_rust-windows
           path: dist_win/
 
-  # ------------------------------
-  # Job macOS
-  # ------------------------------
+# ------------------------------
+# Job macOS
+# ------------------------------
   build-macos:
     name: Build Mac
     runs-on: macos-latest
