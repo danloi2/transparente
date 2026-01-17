@@ -42,30 +42,38 @@ jobs:
           copy-item rust/target/release/transparente_rust.exe dist_win/
           get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
 
+      # --- LINUX: Generación de RPM Robusta con Verificación ---
       - name: Prepare Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
           mkdir dist_linux
 
-          # 1. Buscar la librería real de ONNX
+          # 1. Buscar la librería real de ONNX y copiarla a release
           SO_PATH=$(find rust/target -name "libonnxruntime.so*" -type f -print -quit)
+          if [ -z "$SO_PATH" ]; then
+            echo "ERROR: No se encontró libonnxruntime.so"
+            exit 1
+          fi
           SO_NAME=$(basename "$SO_PATH")
           cp "$SO_PATH" rust/target/release/
+          echo "Librería encontrada y copiada: $SO_NAME"
 
           # 2. Instalar herramienta
           cargo install cargo-generate-rpm
 
-          # 3. GENERAR EL RPM PASANDO LOS ARCHIVOS POR LÍNEA DE COMANDOS
-          # Esto ignora lo que haya en el Cargo.toml y usa lo que le digamos aquí
+          # 3. GENERAR EL RPM
+          # Combinamos lo que hay en Cargo.toml con la inyección forzada del .so
           cd rust
-          cargo generate-rpm \
-            --payload-file "target/release/transparente_rust=/usr/bin/transparente_rust" \
-            --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
+          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
 
-          # 4. Mover resultados
+          # 4. VERIFICACIÓN (Esto saldrá en los logs de GitHub)
+          echo "Contenido del RPM generado:"
+          rpm -qpl target/generate-rpm/*.rpm
+
+          # 5. Mover resultados
           cp target/generate-rpm/*.rpm ../dist_linux/
           cp target/release/transparente_rust ../dist_linux/
-          cp target/release/libonnxruntime.so* ../dist_linux/ 2>/dev/null || true
+          cp target/release/$SO_NAME ../dist_linux/
 
       # --- MACOS: DMG con create-dmg ---
       - name: Prepare Mac
