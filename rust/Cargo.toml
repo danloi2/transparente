@@ -39,9 +39,3 @@ assets = [
 "libxkbcommon" = ">= 1.0"
 "openssl-libs" = "*"
 "mesa-libEGL" = "*"
-
-[package.metadata.generate-rpm.requires]
-"libwayland-client" = ">= 1.20"
-"libxkbcommon" = ">= 1.0"
-"openssl-libs" = "*"
-"mesa-libEGL" = "*"
