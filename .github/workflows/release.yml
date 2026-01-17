@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ------------------------------
+  # Job multiplataforma Linux/Windows/macOS
+  # ------------------------------
   build:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -18,14 +21,11 @@ jobs:
             artifact_name: transparente_rust-windows
           - os: macos-latest
             artifact_name: transparente_rust-macos
-          - os: fedora-latest
-            artifact_name: transparente_rust-fedora
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- Linux Ubuntu: dependencias y compilación ---
       - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -41,7 +41,7 @@ jobs:
           ORT_STRATEGY: download
         run: cargo build --release
 
-      # --- WINDOWS: empaquetar exe + dlls ---
+      # --- WINDOWS ---
       - name: Prepare Windows
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -50,66 +50,7 @@ jobs:
           copy-item rust/target/release/transparente_rust.exe dist_win/
           get-childitem -path rust/target -filter *.dll -recurse | copy-item -destination dist_win/ -force
 
-      # --- LINUX Ubuntu: generar RPM ---
-      - name: Prepare Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          mkdir dist_linux
-
-          SO_PATH=$(find rust/target -name "libonnxruntime.so*" -type f -print -quit)
-          if [ -z "$SO_PATH" ]; then
-            echo "ERROR: No se encontró libonnxruntime.so"
-            exit 1
-          fi
-          SO_NAME=$(basename "$SO_PATH")
-          cp "$SO_PATH" rust/target/release/
-          echo "Librería motor de IA detectada: $SO_NAME"
-
-          cargo install cargo-generate-rpm
-
-          cd rust
-          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
-
-          echo "Contenido del paquete RPM:"
-          rpm -qpl target/generate-rpm/*.rpm
-
-          cp target/generate-rpm/*.rpm ../dist_linux/
-          cp target/release/transparente_rust ../dist_linux/
-          cp target/release/$SO_NAME ../dist_linux/
-
-      # --- Fedora: compilación + RPM nativo ---
-      - name: Prepare Fedora
-        if: matrix.os == 'fedora-latest'
-        runs-on: ubuntu-latest
-        container:
-          image: fedora:39
-        run: |
-          dnf update -y
-          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git
-
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          source $HOME/.cargo/env
-
-          cd rust
-          ORT_STRATEGY=download cargo build --release
-
-          SO_PATH=$(find target -name "libonnxruntime.so*" -type f | head -n1)
-          if [ -z "$SO_PATH" ]; then
-            echo "libonnxruntime no encontrada"
-            exit 1
-          fi
-          SO_NAME=$(basename "$SO_PATH")
-          cp "$SO_PATH" target/release/
-
-          cargo install cargo-generate-rpm
-          cargo generate-rpm --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
-
-          mkdir -p ../dist_fedora
-          cp target/generate-rpm/*.rpm ../dist_fedora/
-          cp target/release/transparente_rust ../dist_fedora/
-          cp target/release/$SO_NAME ../dist_fedora/
-
-      # --- MACOS: DMG ---
+      # --- MACOS ---
       - name: Prepare Mac
         if: matrix.os == 'macos-latest'
         run: |
@@ -128,13 +69,65 @@ jobs:
             "dist_mac/transparente_rust.dmg" \
             "dist_mac/AppContent/"
 
-      # --- SUBIDA DE ARTEFACTOS ---
+      # --- SUBIDA DE ARTEFACTOS MULTIPLATAFORMA ---
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: |
             dist_win/
-            dist_linux/
             dist_mac/*.dmg
-            dist_fedora/
+            dist_linux/
+
+  # ------------------------------
+  # Job Fedora con contenedor moderno
+  # ------------------------------
+  build-fedora:
+    name: Build Fedora RPM
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git
+
+      - name: Install Rust
+        run: |
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          source $HOME/.cargo/env
+
+      - name: Build Release and inject ONNX Runtime
+        run: |
+          source $HOME/.cargo/env
+          cd rust
+          ORT_STRATEGY=download cargo build --release
+
+          SO_PATH=$(find target -name "libonnxruntime.so*" -type f | head -n1)
+          if [ -z "$SO_PATH" ]; then
+            echo "ERROR: libonnxruntime no encontrada"
+            exit 1
+          fi
+          SO_NAME=$(basename "$SO_PATH")
+          cp "$SO_PATH" target/release/
+
+          cargo install cargo-generate-rpm
+
+          cargo generate-rpm \
+            --payload-file "target/release/$SO_NAME=/usr/lib64/$SO_NAME"
+
+          mkdir -p ../dist_fedora
+          cp target/generate-rpm/*.rpm ../dist_fedora/
+          cp target/release/transparente_rust ../dist_fedora/
+          cp target/release/$SO_NAME ../dist_fedora/
+
+      - name: Upload Fedora Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: transparente_rust-fedora
+          path: dist_fedora/
