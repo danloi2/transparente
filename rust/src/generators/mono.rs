@@ -58,11 +58,18 @@ pub fn generate_grayscale_svg(img: &DynamicImage, output_path: &Path, num_tones:
         if status.success() {
             let content = fs::read_to_string(&svg_tmp_path)?;
             let hex_color = format!("#{:02x}{:02x}{:02x}", tone_value, tone_value, tone_value);
-            // Extract paths - simplified regex logic
-            for line in content.lines() {
-                if line.contains("<path") {
-                    let colored_path = line.replace("fill=\"black\"", &format!("fill=\"{}\"", hex_color));
-                    svg_layers.push((tone_value, colored_path));
+            
+            // Robustly extract the content between <svg ...> and </svg>
+            if let Some(start_idx) = content.find("<svg") {
+                if let Some(content_start) = content[start_idx..].find('>') {
+                    let inner_content_start = start_idx + content_start + 1;
+                    if let Some(end_idx) = content.rfind("</svg>") {
+                        let inner_content = &content[inner_content_start..end_idx];
+                        let colored_content = inner_content
+                            .replace("fill=\"black\"", &format!("fill=\"{}\"", hex_color))
+                            .replace("fill=\"#000000\"", &format!("fill=\"{}\"", hex_color));
+                        svg_layers.push((tone_value, colored_content));
+                    }
                 }
             }
         }
@@ -164,18 +171,43 @@ pub fn generate_lineart_svg(img: &DynamicImage, output_path: &Path) -> Result<()
     let bmp_path = temp_bmp.path().with_extension("bmp");
     mask.save(&bmp_path)?;
 
+    let temp_svg = NamedTempFile::new_in(".")?;
+    let svg_tmp_path = temp_svg.path().with_extension("svg");
+
     let status = Command::new("potrace")
         .args(&[
             bmp_path.to_str().unwrap(),
             "-s",
             "-o",
-            output_path.to_str().unwrap(),
+            svg_tmp_path.to_str().unwrap(),
             "--flat",
             "--turdsize", "10",
         ])
         .status()?;
 
+    if status.success() {
+        let content = fs::read_to_string(&svg_tmp_path)?;
+        let mut final_svg = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n\
+            <svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" \
+            width=\"{}\" height=\"{}\" viewBox=\"0 0 {} {}\">\n",
+            gray.width(), gray.height(), gray.width(), gray.height()
+        );
+
+        if let Some(start_idx) = content.find("<svg") {
+            if let Some(content_start) = content[start_idx..].find('>') {
+                let inner_content_start = start_idx + content_start + 1;
+                if let Some(end_idx) = content.rfind("</svg>") {
+                    final_svg.push_str(&content[inner_content_start..end_idx]);
+                }
+            }
+        }
+        final_svg.push_str("</svg>");
+        fs::write(output_path, final_svg)?;
+    }
+
     let _ = fs::remove_file(bmp_path);
+    let _ = fs::remove_file(svg_tmp_path);
 
     if !status.success() {
         return Err(anyhow!("Potrace failed for lineart"));

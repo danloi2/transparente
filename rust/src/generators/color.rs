@@ -105,10 +105,19 @@ pub fn generate_color_svg(img: &DynamicImage, output_path: &Path, num_colors: u3
         if status.success() {
             let content = fs::read_to_string(&svg_tmp_path)?;
             let hex_color = format!("#{:02x}{:02x}{:02x}", r_u8, g_u8, b_u8);
-            for line in content.lines() {
-                if line.contains("<path") {
-                    let colored_path = line.replace("fill=\"black\"", &format!("fill=\"{}\"", hex_color));
-                    svg_layers.push(colored_path);
+            
+            // Robustly extract the content between <svg ...> and </svg>
+            if let Some(start_idx) = content.find("<svg") {
+                if let Some(content_start) = content[start_idx..].find('>') {
+                    let inner_content_start = start_idx + content_start + 1;
+                    if let Some(end_idx) = content.rfind("</svg>") {
+                        let inner_content = &content[inner_content_start..end_idx];
+                        // Replace common black fill values
+                        let colored_content = inner_content
+                            .replace("fill=\"black\"", &format!("fill=\"{}\"", hex_color))
+                            .replace("fill=\"#000000\"", &format!("fill=\"{}\"", hex_color));
+                        svg_layers.push(colored_content);
+                    }
                 }
             }
         }
