@@ -19,7 +19,7 @@ walkdir = "2.5"
 palette = "0.7"
 rfd = "0.17.2"
 rand = "0.9"
-ort = { version = "2.0.0-rc.11", features = ["ndarray"] }
+ort = { version = "2.0.0-rc.11", features = ["ndarray", "copy-dylibs"] }
 ndarray = "0.17"
 reqwest = { version = "0.13", features = ["blocking"] }
 imageproc = "0.26"
@@ -31,7 +31,8 @@ eframe = { version = "0.33", features = ["wayland", "x11"] }
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/transparente_rust", dest = "/usr/bin/transparente_rust", mode = "755" }
+    { source = "target/release/transparente_rust", dest = "/usr/bin/transparente_rust", mode = "755" },
+    { source = "target/release/libonnxruntime.so", dest = "/usr/lib64/libonnxruntime.so", mode = "755" }
 ]
 
 [package.metadata.generate-rpm.requires]
