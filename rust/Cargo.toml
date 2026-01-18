@@ -31,8 +31,7 @@ eframe = { version = "0.33", features = ["wayland", "x11"] }
 
 [package.metadata.generate-rpm]
 assets = [
-    { source = "target/release/transparente_rust", dest = "/usr/bin/transparente_rust", mode = "755" },
-    { source = "target/release/libonnxruntime.so", dest = "/usr/lib64/libonnxruntime.so", mode = "755" }
+    { source = "target/release/transparente_rust", dest = "/usr/bin/transparente_rust", mode = "755" }
 ]
 
 [package.metadata.generate-rpm.requires]

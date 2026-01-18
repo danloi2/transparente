@@ -6,172 +6,100 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ------------------------------
-  # Job Ubuntu (Binarios sueltos)
-  # ------------------------------
+  # UBUNTU: Ya no busca .so porque el enlace es estático
   build-ubuntu:
     name: Build Ubuntu
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Ubuntu Dependencies
+      - uses: actions/checkout@v4
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev pkg-config zlib1g-dev curl
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Release
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
         working-directory: ./rust
+        run: cargo build --release
         env:
           ORT_STRATEGY: download
-        run: cargo build --release
-
-      - name: Prepare Linux artifact
-        run: |
-          mkdir -p dist_linux
-          cp rust/target/release/transparente_rust dist_linux/
-          # Búsqueda agresiva: busca en todo el directorio de trabajo
-          LIB_SO=$(find . -name "libonnxruntime.so*" -type f | head -n 1)
-          if [ -n "$LIB_SO" ]; then
-            echo "Librería encontrada en: $LIB_SO"
-            cp "$LIB_SO" dist_linux/libonnxruntime.so
-          else
-            echo "Error: no se encontró libonnxruntime.so" && exit 1
-          fi
-          
-      - name: Upload Ubuntu Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-linux-raw
-          path: dist_linux/
+          name: transparente_rust-linux
+          path: rust/target/release/transparente_rust
 
-  # ------------------------------
-  # Job Fedora (Generación de RPM)
-  # ------------------------------
+  # FEDORA: Solo empaqueta el ejecutable (ONNX va dentro)
   build-fedora:
     name: Build Fedora RPM
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Fedora dependencies
-        run: |
-          dnf update -y
-          dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git pkgconfig zlib-devel rust cargo
-
-      - name: Build and Package RPM
+      - uses: actions/checkout@v4
+      - name: Install Fedora deps
+        run: dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rust cargo
+      - name: Build and Package
         run: |
           cd rust
           export ORT_STRATEGY=download
           cargo build --release
-          
-          # Búsqueda absoluta dentro del contenedor (GitHub monta en /__w/)
-          echo "Buscando libonnxruntime.so de forma exhaustiva..."
-          LIB_PATH=$(find /__w/ -name "libonnxruntime.so*" -type f | head -n 1)
-          
-          if [ -z "$LIB_PATH" ]; then
-            echo "ERROR: No se encontró libonnxruntime.so. Abortando."
-            exit 1
-          fi
-          
-          echo "Librería encontrada en: $LIB_PATH"
-          # Copiar al destino que espera el asset en Cargo.toml
-          cp "$LIB_PATH" target/release/libonnxruntime.so
-          
           cargo install cargo-generate-rpm
+          # Generamos el RPM (Asegúrate de haber borrado el .so de tu Cargo.toml)
           cargo generate-rpm
-          
           mkdir -p ../dist_fedora
           cp target/generate-rpm/*.rpm ../dist_fedora/
-          cp target/release/transparente_rust ../dist_fedora/
-
-      - name: Upload Fedora Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: transparente_rust-fedora-rpm
           path: dist_fedora/
 
-  # ------------------------------
-  # Job Windows (EXE + DLLs)
-  # ------------------------------
+  # WINDOWS: Captura el EXE y la DirectML.dll (Vital para GPU)
   build-windows:
     name: Build Windows
     runs-on: windows-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Release
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
         shell: pwsh
         run: |
           cd rust
           $env:ORT_STRATEGY="download"
           cargo build --release
-
-      - name: Prepare Windows artifact
+      - name: Prepare Artifact
         shell: pwsh
         run: |
-          if (Test-Path dist_win) { Remove-Item -Recurse -Force dist_win }
           mkdir dist_win
           copy-item rust/target/release/transparente_rust.exe dist_win/
-          # Captura onnxruntime.dll Y DirectML.dll
+          # Buscamos cualquier DLL generada (DirectML.dll) para que funcione la GPU
           Get-ChildItem -Path rust/target/release -Filter *.dll -Recurse | Copy-Item -Destination dist_win/ -Force
-
-      - name: Upload Windows Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: transparente_rust-windows
           path: dist_win/
 
-  # ------------------------------
-  # Job macOS (DMG)
-  # ------------------------------
+  # macOS: Binario + dylibs
   build-macos:
     name: Build Mac
     runs-on: macos-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Release
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
         run: |
           cd rust
           ORT_STRATEGY=download cargo build --release
-
-      - name: Prepare Mac artifact
+      - name: Create DMG
         run: |
-          rm -rf dist_mac
           mkdir -p dist_mac/AppContent
           cp rust/target/release/transparente_rust dist_mac/AppContent/
-          # Buscar librerías dinámicas de Mac
           find rust/target/release -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \;
-          chmod +x dist_mac/AppContent/transparente_rust
-          
           brew install --quiet create-dmg
-          create-dmg \
-            --volname "Transparente IA" \
-            --window-pos 200 120 \
-            --window-size 500 300 \
-            --icon-size 100 \
-            --app-drop-link 380 120 \
-            "dist_mac/transparente_rust_macos.dmg" \
-            "dist_mac/AppContent/"
-
-      - name: Upload Mac Artifact
+          create-dmg --volname "Transparente IA" "dist_mac/transparente_rust_macos.dmg" "dist_mac/AppContent/"
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-macos-dmg
+          name: transparente_rust-macos
           path: dist_mac/*.dmg
