@@ -2,12 +2,13 @@ name: Build Multiplatform
 
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
-# ------------------------------
-# Job Ubuntu
-# ------------------------------
 jobs:
+  # ------------------------------
+  # Job Ubuntu (Binarios sueltos)
+  # ------------------------------
   build-ubuntu:
     name: Build Ubuntu
     runs-on: ubuntu-latest
@@ -18,7 +19,8 @@ jobs:
       - name: Install Ubuntu Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev rpm pkg-config zlib1g-dev curl
+          sudo apt-get install -y libwayland-dev libx11-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev libssl-dev pkg-config zlib1g-dev curl
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -32,15 +34,18 @@ jobs:
         run: |
           mkdir -p dist_linux
           cp rust/target/release/transparente_rust dist_linux/
+          # Buscar la librería .so (que puede tener versión en el nombre) y renombrarla
+          find rust/target/release -name "libonnxruntime.so*" -exec cp {} dist_linux/libonnxruntime.so \;
+          
       - name: Upload Ubuntu Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-linux
+          name: transparente_rust-linux-raw
           path: dist_linux/
 
-# ------------------------------
-# Job Fedora
-# ------------------------------
+  # ------------------------------
+  # Job Fedora (Generación de RPM)
+  # ------------------------------
   build-fedora:
     name: Build Fedora RPM
     runs-on: ubuntu-latest
@@ -54,24 +59,34 @@ jobs:
         run: |
           dnf update -y
           dnf install -y gcc gcc-c++ make openssl-devel libX11-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel dbus-devel rpm-build rpmdevtools curl git pkgconfig zlib-devel rust cargo
-      - name: Build Release Fedora
+
+      - name: Build and Package RPM
         run: |
           cd rust
-          ORT_STRATEGY=download cargo build --release
+          export ORT_STRATEGY=download
+          cargo build --release
+          
+          # CRUCIAL: Preparar el asset para cargo-generate-rpm
+          # Busca el archivo real y crea el nombre exacto que declaraste en Cargo.toml
+          LIB_PATH=$(find target/release -name "libonnxruntime.so*" | head -n 1)
+          cp "$LIB_PATH" target/release/libonnxruntime.so
+          
           cargo install cargo-generate-rpm
           cargo generate-rpm
+          
           mkdir -p ../dist_fedora
-          cp target/release/transparente_rust ../dist_fedora/
           cp target/generate-rpm/*.rpm ../dist_fedora/
+          cp target/release/transparente_rust ../dist_fedora/
+
       - name: Upload Fedora Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-fedora
+          name: transparente_rust-fedora-rpm
           path: dist_fedora/
 
-# ------------------------------
-# Job Windows
-# ------------------------------
+  # ------------------------------
+  # Job Windows (EXE + DLLs)
+  # ------------------------------
   build-windows:
     name: Build Windows
     runs-on: windows-latest
@@ -88,22 +103,26 @@ jobs:
           cd rust
           $env:ORT_STRATEGY="download"
           cargo build --release
+
       - name: Prepare Windows artifact
         shell: pwsh
         run: |
           if (Test-Path dist_win) { Remove-Item -Recurse -Force dist_win }
           mkdir dist_win
+          # Copiar ejecutable
           copy-item rust/target/release/transparente_rust.exe dist_win/
+          # Copiar todas las DLLs necesarias (onnxruntime.dll, DirectML.dll, etc)
           Get-ChildItem -Path rust/target/release -Filter *.dll | Copy-Item -Destination dist_win/ -Force
+
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
           name: transparente_rust-windows
           path: dist_win/
 
-# ------------------------------
-# Job macOS
-# ------------------------------
+  # ------------------------------
+  # Job macOS (DMG)
+  # ------------------------------
   build-macos:
     name: Build Mac
     runs-on: macos-latest
@@ -118,24 +137,28 @@ jobs:
         run: |
           cd rust
           ORT_STRATEGY=download cargo build --release
+
       - name: Prepare Mac artifact
         run: |
           rm -rf dist_mac
           mkdir -p dist_mac/AppContent
           cp rust/target/release/transparente_rust dist_mac/AppContent/
+          # Buscar dylibs (onnxruntime)
           find rust/target/release -name "*.dylib*" -exec cp {} dist_mac/AppContent/ \;
           chmod +x dist_mac/AppContent/transparente_rust
+          
           brew install --quiet create-dmg
           create-dmg \
-            --volname "Instalador Transparente" \
+            --volname "Transparente IA" \
             --window-pos 200 120 \
             --window-size 500 300 \
             --icon-size 100 \
             --app-drop-link 380 120 \
-            "dist_mac/transparente_rust.dmg" \
+            "dist_mac/transparente_rust_macos.dmg" \
             "dist_mac/AppContent/"
+
       - name: Upload Mac Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: transparente_rust-macos
+          name: transparente_rust-macos-dmg
           path: dist_mac/*.dmg
